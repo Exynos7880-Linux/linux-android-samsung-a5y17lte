@@ -284,7 +284,7 @@ struct binder_device {
 struct binder_work {
 	struct list_head entry;
 
-	enum binder_work_type {
+	enum {
 		BINDER_WORK_TRANSACTION = 1,
 		BINDER_WORK_TRANSACTION_COMPLETE,
 		BINDER_WORK_RETURN_ERROR,
@@ -878,6 +878,27 @@ static struct binder_work *binder_dequeue_work_head_ilocked(
 	return w;
 }
 
+/**
+ * binder_dequeue_work_head() - Dequeues the item at head of list
+ * @proc:         binder_proc associated with list
+ * @list:         list to dequeue head
+ *
+ * Removes the head of the list if there are items on the list
+ *
+ * Return: pointer dequeued binder_work, NULL if list was empty
+ */
+static struct binder_work *binder_dequeue_work_head(
+					struct binder_proc *proc,
+					struct list_head *list)
+{
+	struct binder_work *w;
+
+	binder_inner_proc_lock(proc);
+	w = binder_dequeue_work_head_ilocked(list);
+	binder_inner_proc_unlock(proc);
+	return w;
+}
+
 static void
 binder_defer_work(struct binder_proc *proc, enum binder_deferred_state defer);
 static void binder_free_thread(struct binder_thread *thread);
@@ -1299,7 +1320,7 @@ static struct binder_node *binder_init_node_ilocked(
 		FLAT_BINDER_FLAG_SCHED_POLICY_SHIFT;
 	node->min_priority = to_kernel_prio(node->sched_policy, priority);
 	node->accept_fds = !!(flags & FLAT_BINDER_FLAG_ACCEPTS_FDS);
-	node->txn_security_ctx = !!(flags & FLAT_BINDER_FLAG_TXN_SECURITY_CTX);
+	node->txn_security_ctx = 0; //!!(flags & FLAT_BINDER_FLAG_TXN_SECURITY_CTX);
 	node->inherit_rt = !!(flags & FLAT_BINDER_FLAG_INHERIT_RT);
 	spin_lock_init(&node->lock);
 	INIT_LIST_HEAD(&node->work.entry);
@@ -2039,18 +2060,8 @@ static struct binder_thread *binder_get_txn_from_and_acq_inner(
 
 static void binder_free_transaction(struct binder_transaction *t)
 {
-	struct binder_proc *target_proc = t->to_proc;
-
-	if (target_proc) {
-		binder_inner_proc_lock(target_proc);
-		if (t->buffer)
-			t->buffer->transaction = NULL;
-		binder_inner_proc_unlock(target_proc);
-	}
-	/*
-	 * If the transaction has no target_proc, then
-	 * t->buffer->transaction has already been cleared.
-	 */
+	if (t->buffer)
+		t->buffer->transaction = NULL;
 	kfree(t);
 	binder_stats_deleted(BINDER_STAT_TRANSACTION);
 }
@@ -2674,6 +2685,8 @@ static int binder_fixup_parent(struct binder_transaction *t,
 	return 0;
 }
 
+static atomic_t ofono_async_buffer_cnt = {.counter = 0};
+
 /**
  * binder_proc_transaction() - sends a transaction to a process and wakes it up
  * @t:		transaction to send
@@ -2700,7 +2713,8 @@ static bool binder_proc_transaction(struct binder_transaction *t,
 	struct binder_priority node_prio;
 	bool oneway = !!(t->flags & TF_ONE_WAY);
 	bool wakeup = true;
-
+	struct task_struct *current_task;
+	bool is_ofonod;
 	BUG_ON(!node);
 	binder_node_lock(node);
 	node_prio.prio = node->min_priority;
@@ -2708,10 +2722,32 @@ static bool binder_proc_transaction(struct binder_transaction *t,
 
 	if (oneway) {
 		BUG_ON(thread);
+		current_task = proc->tsk;
+		is_ofonod = false;
+		if(current_task != NULL && strcmp(current_task->comm, "ofonod") == 0){
+			is_ofonod = true;
+			atomic_inc(&ofono_async_buffer_cnt);
+		}
 		if (node->has_async_transaction) {
-			target_list = &node->async_todo;
-			wakeup = false;
+			/*
+			if(current_task != NULL){
+				pr_info("%s:%d has a pending async transaction while adding another transaction\n",
+					current_task->comm, proc->pid);
+			}else{
+				pr_info("(process not found):%d has a pending async transaction while adding another transaction\n",
+					proc->pid);
+			}
+			*/
+			if(is_ofonod){
+				pr_info("hack: processing ofonod async transaction instead of queuing it for until BC_FREE_BUFFER, buffer count is now %d\n", atomic_read(&ofono_async_buffer_cnt));
+			}else{
+				target_list = &node->async_todo;
+				wakeup = false;
+			}
 		} else {
+			if(is_ofonod){
+				pr_info("hack: ofonod begins async transcation, buffer count is now %d\n", atomic_read(&ofono_async_buffer_cnt));
+			}
 			node->has_async_transaction = 1;
 		}
 	}
@@ -2997,7 +3033,6 @@ static void binder_transaction(struct binder_proc *proc,
 	}
 	if (target_node && target_node->txn_security_ctx) {
 		u32 secid;
-		size_t added_size;
 
 		security_task_getsecid(proc->tsk, &secid);
 		ret = security_secid_to_secctx(secid, &secctx, &secctx_sz);
@@ -3007,15 +3042,7 @@ static void binder_transaction(struct binder_proc *proc,
 			return_error_line = __LINE__;
 			goto err_get_secctx_failed;
 		}
-		added_size = ALIGN(secctx_sz, sizeof(u64));
-		extra_buffers_size += added_size;
-		if (extra_buffers_size < added_size) {
-			/* integer overflow of extra_buffers_size */
-			return_error = BR_FAILED_REPLY;
-			return_error_param = EINVAL;
-			return_error_line = __LINE__;
-			goto err_bad_extra_size;
-		}
+		extra_buffers_size += ALIGN(secctx_sz, sizeof(u64));
 	}
 
 
@@ -3306,7 +3333,6 @@ err_copy_data_failed:
 	t->buffer->transaction = NULL;
 	binder_alloc_free_buf(&target_proc->alloc, t->buffer);
 err_binder_alloc_buf_failed:
-err_bad_extra_size:
 	if (secctx)
 		security_release_secctx(secctx, secctx_sz);
 err_get_secctx_failed:
@@ -3565,10 +3591,27 @@ static int binder_thread_write(struct binder_proc *proc,
 			if (buffer->async_transaction && buffer->target_node) {
 				struct binder_node *buf_node;
 				struct binder_work *w;
+				struct task_struct *current_task;
 
 				buf_node = buffer->target_node;
 				binder_node_inner_lock(buf_node);
-				BUG_ON(!buf_node->has_async_transaction);
+				// ofono/gbinder workaround
+				current_task = proc->tsk;
+				/*
+				if(current_task != NULL){
+					pr_info("processing BC_FREE_BUFFER from %s\n", current_task->comm);
+				}
+				*/
+				if(current_task != NULL && strcmp(current_task->comm, "ofonod") == 0){
+					atomic_dec(&ofono_async_buffer_cnt);
+					if(!buf_node->has_async_transaction){
+						pr_info("hack: let ofonod get away with BC_FREE_BUFFER without pending async transaction, buffer count is now %d\n", atomic_read(&ofono_async_buffer_cnt));
+					}else{
+						pr_info("hack: ofonod BC_FREE_BUFFER with pending async transaction, buffer count is now %d\n", atomic_read(&ofono_async_buffer_cnt));
+					}
+				}else{
+					BUG_ON(!buf_node->has_async_transaction);
+				}
 				BUG_ON(buf_node->proc != proc);
 				w = binder_dequeue_work_head_ilocked(
 						&buf_node->async_todo);
@@ -4271,17 +4314,13 @@ static void binder_release_work(struct binder_proc *proc,
 				struct list_head *list)
 {
 	struct binder_work *w;
-	enum binder_work_type wtype;
 
 	while (1) {
-		binder_inner_proc_lock(proc);
-		w = binder_dequeue_work_head_ilocked(list);
-		wtype = w ? w->type : 0;
-		binder_inner_proc_unlock(proc);
+		w = binder_dequeue_work_head(proc, list);
 		if (!w)
 			return;
 
-		switch (wtype) {
+		switch (w->type) {
 		case BINDER_WORK_TRANSACTION: {
 			struct binder_transaction *t;
 
@@ -4321,11 +4360,9 @@ static void binder_release_work(struct binder_proc *proc,
 			kfree(death);
 			binder_stats_deleted(BINDER_STAT_DEATH);
 		} break;
-		case BINDER_WORK_NODE:
-			break;
 		default:
 			pr_err("unexpected work type, %d, not freed\n",
-			       wtype);
+			       w->type);
 			break;
 		}
 	}
@@ -4468,28 +4505,8 @@ static int binder_thread_release(struct binder_proc *proc,
 		if (t)
 			spin_lock(&t->lock);
 	}
-	/*
-	 * If this thread used poll, make sure we remove the waitqueue
-	 * from any epoll data structures holding it with POLLFREE.
-	 * waitqueue_active() is safe to use here because we're holding
-	 * the inner lock.
-	 */
-	if ((thread->looper & BINDER_LOOPER_STATE_POLL) &&
-	    waitqueue_active(&thread->wait)) {
-		wake_up_poll(&thread->wait, POLLHUP | POLLFREE);
-	}
-
 	binder_inner_proc_unlock(thread->proc);
 
-	/*
-	 * This is needed to avoid races between wake_up_poll() above and
-	 * and ep_remove_waitqueue() called for other reasons (eg the epoll file
-	 * descriptor being closed); ep_remove_waitqueue() holds an RCU read
-	 * lock, so we can be sure it's done after calling synchronize_rcu().
-	 */
-	if (thread->looper & BINDER_LOOPER_STATE_POLL)
-		synchronize_rcu();
-	
 	if (send_reply)
 		binder_send_failed_reply(send_reply, BR_DEAD_REPLY);
 	binder_release_work(proc, &thread->todo);
