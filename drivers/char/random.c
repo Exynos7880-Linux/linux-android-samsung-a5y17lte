@@ -1547,7 +1547,7 @@ SYSCALL_DEFINE3(getrandom, char __user *, buf, size_t, count,
 
 	if (unlikely(nonblocking_pool.initialized == 0)) {
 		if (flags & GRND_NONBLOCK)
-			return -EAGAIN;
+			return urandom_read(NULL, buf, count, NULL);
 		wait_event_interruptible(urandom_init_wait,
 					 nonblocking_pool.initialized);
 		if (signal_pending(current))
