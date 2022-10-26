@@ -8,6 +8,7 @@ TARGETS += mqueue
 TARGETS += mount
 TARGETS += net
 TARGETS += ptrace
+TARGETS += pidfd
 TARGETS += timers
 TARGETS += vm
 TARGETS += powerpc
