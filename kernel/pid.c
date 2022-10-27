@@ -39,7 +39,8 @@
 #include <linux/proc_ns.h>
 #include <linux/proc_fs.h>
 #include <linux/anon_inodes.h>
-//#include <linux/sched/signal.h>
+#include <linux/sched/signal.h>
+#include <uapi/linux/pidfd.h>
 
 #define pid_hashfn(nr, ns)	\
 	hash_long((unsigned long)nr + (unsigned long)ns, pidhash_shift)
@@ -330,7 +331,7 @@ struct pid *alloc_pid(struct pid_namespace *ns)
 		INIT_HLIST_HEAD(&pid->tasks[type]);
 
 	init_waitqueue_head(&pid->wait_pidfd);
-	
+
 	upid = pid->numbers + ns->level;
 	spin_lock_irq(&pidmap_lock);
 	if (!(ns->nr_hashed & PIDNS_HASH_ADDING))
@@ -580,12 +581,12 @@ struct pid *find_ge_pid(int nr, struct pid_namespace *ns)
  * Return: On success, a cloexec pidfd is returned.
  *         On error, a negative errno number will be returned.
  */
-static int pidfd_create(struct pid *pid)
+static int pidfd_create(struct pid *pid, unsigned int flags)
 {
 	int fd;
 
 	fd = anon_inode_getfd("[pidfd]", &pidfd_fops, get_pid(pid),
-			      O_RDWR | O_CLOEXEC);
+			                  flags | O_RDWR | O_CLOEXEC);
 	if (fd < 0)
 		put_pid(pid);
 
@@ -614,7 +615,7 @@ SYSCALL_DEFINE2(pidfd_open, pid_t, pid, unsigned int, flags)
 	struct pid *p;
 	struct task_struct *tsk;
 
-	if (flags)
+	if (flags & ~PIDFD_NONBLOCK)
 		return -EINVAL;
 
 	if (pid <= 0)
@@ -631,8 +632,7 @@ SYSCALL_DEFINE2(pidfd_open, pid_t, pid, unsigned int, flags)
 	if (!tsk || !thread_group_leader(tsk))
 		ret = -EINVAL;
 	rcu_read_unlock();
-
-	fd = ret ?: pidfd_create(p);
+	fd = ret ?: pidfd_create(p, flags));
 	put_pid(p);
 	return fd;
 }
