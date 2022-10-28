@@ -39,7 +39,7 @@
 #include <linux/proc_ns.h>
 #include <linux/proc_fs.h>
 #include <linux/anon_inodes.h>
-#include <linux/sched/signal.h>
+//#include <linux/sched/signal.h>
 #include <uapi/linux/pidfd.h>
 
 #define pid_hashfn(nr, ns)	\
@@ -549,6 +549,7 @@ struct pid_namespace *task_active_pid_ns(struct task_struct *tsk)
 }
 EXPORT_SYMBOL_GPL(task_active_pid_ns);
 
+
 /*
  * Used by proc to find the first pid that is greater than or equal to nr.
  *
@@ -556,16 +557,63 @@ EXPORT_SYMBOL_GPL(task_active_pid_ns);
  */
 struct pid *find_ge_pid(int nr, struct pid_namespace *ns)
 {
+	return idr_get_next(&ns->idr, &nr);
+}
+EXPORT_SYMBOL_GPL(find_ge_pid);
+
+struct pid *pidfd_get_pid(unsigned int fd, unsigned int *flags)
+{
+	struct fd f;
 	struct pid *pid;
 
-	do {
-		pid = find_pid_ns(nr, ns);
-		if (pid)
-			break;
-		nr = next_pidmap(ns, nr);
-	} while (nr > 0);
+	f = fdget(fd);
+	if (!f.file)
+		return ERR_PTR(-EBADF);
 
+	pid = pidfd_pid(f.file);
+	if (!IS_ERR(pid)) {
+		get_pid(pid);
+		*flags = f.file->f_flags;
+	}
+
+	fdput(f);
 	return pid;
+}
+
+/**
+ * pidfd_get_task() - Get the task associated with a pidfd
+ *
+ * @pidfd: pidfd for which to get the task
+ * @flags: flags associated with this pidfd
+ *
+ * Return the task associated with @pidfd. The function takes a reference on
+ * the returned task. The caller is responsible for releasing that reference.
+ *
+ * Currently, the process identified by @pidfd is always a thread-group leader.
+ * This restriction currently exists for all aspects of pidfds including pidfd
+ * creation (CLONE_PIDFD cannot be used with CLONE_THREAD) and pidfd polling
+ * (only supports thread group leaders).
+ *
+ * Return: On success, the task_struct associated with the pidfd.
+ *	   On error, a negative errno number will be returned.
+ */
+struct task_struct *pidfd_get_task(int pidfd, unsigned int *flags)
+{
+	unsigned int f_flags;
+	struct pid *pid;
+	struct task_struct *task;
+
+	pid = pidfd_get_pid(pidfd, &f_flags);
+	if (IS_ERR(pid))
+		return ERR_CAST(pid);
+
+	task = get_pid_task(pid, PIDTYPE_TGID);
+	put_pid(pid);
+	if (!task)
+		return ERR_PTR(-ESRCH);
+
+	*flags = f_flags;
+	return task;
 }
 
 /**
@@ -632,7 +680,7 @@ SYSCALL_DEFINE2(pidfd_open, pid_t, pid, unsigned int, flags)
 	if (!tsk || !thread_group_leader(tsk))
 		ret = -EINVAL;
 	rcu_read_unlock();
-	fd = ret ?: pidfd_create(p, flags));
+	fd = ret ?: pidfd_create(p, flags);
 	put_pid(p);
 	return fd;
 }

@@ -1219,6 +1219,14 @@ init_task_pid(struct task_struct *task, enum pid_type type, struct pid *pid)
 	 task->pids[type].pid = pid;
 }
 
+struct pid *pidfd_pid(const struct file *file)
+{
+	if (file->f_op == &pidfd_fops)
+		return file->private_data;
+
+	return ERR_PTR(-EBADF);
+}
+
 static int pidfd_release(struct inode *inode, struct file *file)
 {
 	struct pid *pid = file->private_data;
@@ -1566,7 +1574,7 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 		if (!pid)
 			goto bad_fork_cleanup_io;
 	}
-	
+
 	/*
 	 * This has to happen after we've potentially unshared the file
 	 * descriptor table (so that the pidfd doesn't leak into the child
@@ -1732,7 +1740,7 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	uprobe_copy_process(p, clone_flags);
 
 	return p;
-	
+
 bad_fork_put_pidfd:
 	if (clone_flags & CLONE_PIDFD)
 		sys_close(pidfd);
