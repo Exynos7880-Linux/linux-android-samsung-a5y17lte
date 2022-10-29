@@ -39,7 +39,7 @@
 #include <linux/proc_ns.h>
 #include <linux/proc_fs.h>
 #include <linux/anon_inodes.h>
-#include <linux/sched/signal.h>
+//#include <linux/sched/signal.h>
 #include <uapi/linux/pidfd.h>
 
 #define pid_hashfn(nr, ns)	\
@@ -632,7 +632,7 @@ SYSCALL_DEFINE2(pidfd_open, pid_t, pid, unsigned int, flags)
 	if (!tsk || !thread_group_leader(tsk))
 		ret = -EINVAL;
 	rcu_read_unlock();
-	fd = ret ?: pidfd_create(p, flags));
+	fd = ret ?: pidfd_create(p, flags);
 	put_pid(p);
 	return fd;
 }
