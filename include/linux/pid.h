@@ -79,13 +79,6 @@ struct pid_link
 
 extern const struct file_operations pidfd_fops;
 
-struct file;
-
-extern struct pid *pidfd_pid(const struct file *file);
-struct pid *pidfd_get_pid(unsigned int fd, unsigned int *flags);
-struct task_struct *pidfd_get_task(int pidfd, unsigned int *flags);
-int pidfd_create(struct pid *pid, unsigned int flags);
-
 static inline struct pid *get_pid(struct pid *pid)
 {
 	if (pid)
