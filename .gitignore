@@ -50,7 +50,7 @@ Module.symvers
 #
 # Debian directory (make deb-pkg)
 #
-/debian/
+#/debian/
 
 #
 # git files that we don't want to ignore even it they are dot-files
@@ -96,3 +96,4 @@ x509.genkey
 
 # Kconfig presets
 all.config
+/out/
