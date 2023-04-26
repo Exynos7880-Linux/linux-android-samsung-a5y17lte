@@ -43,12 +43,11 @@ KERNEL_CONFIG_USE_DIFFCONFIG = 0
 KERNEL_DEFCONFIG = droidian-a5y17lte_defconfig
 
 # Whether to include DTBs with the image. Use 0 (no) or 1.
-KERNEL_IMAGE_WITH_DTB = 1
+KERNEL_IMAGE_WITH_DTB = 0
 
 # Path to the DTB
 # If you leave this undefined, an attempt to find it automatically
 # will be made.
-KERNEL_IMAGE_DTB = arch/arm64/boot/dts/exynos7880-a5y17lte_eur_open_00.dtb arch/arm64/boot/dts/exynos7880-a5y17lte_eur_open_01.dtb arch/arm64/boot/dts/exynos7880-a5y17lte_eur_open_02.dtb arch/arm64/boot/dts/exynos7880-a5y17lte_eur_open_03.dtb arch/arm64/boot/dts/exynos7880-a5y17lte_eur_open_04.dtb arch/arm64/boot/dts/exynos7880-a5y17lte_eur_open_05.dtb arch/arm64/boot/dts/exynos7880-a5y17lte_eur_open_06.dtb arch/arm64/boot/dts/exynos7880-a5y17lte_eur_open_07.dtb arch/arm64/boot/dts/exynos7880-a5y17lte_eur_open_08.dtb
 
 # Whether to include a DTB Overlay. Use 0 (no) or 1.
 KERNEL_IMAGE_WITH_DTB_OVERLAY = 0
@@ -144,7 +143,7 @@ FLASH_INFO_MODEL = SM-A520F
 #FLASH_INFO_CPU = My Fictional System-on-a-Chip
 
 # Space-separated list of supported device ids as reported by fastboot
-#FLASH_INFO_DEVICE_IDS = model1 model2
+FLASH_INFO_DEVICE_IDS = SM-A520F a5y17lte
 
 ########################################################################
 # Kernel build settings
