@@ -10,6 +10,7 @@ path-override-prepare:
 	ln -sf /opt/android/prebuilts/python/2.7.5/bin/python debian/path-override/python
 	wget https://raw.githubusercontent.com/LineageOS/android_system_tools_mkbootimg/lineage-19.1/mkbootimg.py -O /usr/bin/mkbootimg
 	chmod 755 /usr/bin/mkbootimg
+	sed 's/boot/BOOT/g' /usr/share/linux-packaging-snippets/flash-bootimage-template-legacy-extend.in
 
 out/KERNEL_OBJ/boot.img: out/KERNEL_OBJ/initramfs.gz out/KERNEL_OBJ/target-dtb
 	if [ "$(KERNEL_BOOTIMAGE_VERSION)" -eq "2" ]; then \
