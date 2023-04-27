@@ -37,5 +37,5 @@ out/KERNEL_OBJ/boot.img: out/KERNEL_OBJ/initramfs.gz out/KERNEL_OBJ/target-dtb
 		$${MKBOOTIMG_SPL_ARGS} \
 		-o $@
 
-out/KERNEL_OBJ/initramfs.gz:
-	cp /buildd/sources/debian/initrd.img-halium-generic $@
+#out/KERNEL_OBJ/initramfs.gz:
+#	cp /buildd/sources/debian/initrd.img-halium-generic $@
