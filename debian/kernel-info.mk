@@ -104,7 +104,7 @@ DEVICE_VBMETA_REQUIRED = 0
 # Samsung devices require a special flag. Enable the following if your
 # device is a Samsung device that requires flag 0 to be present
 # Use 0 (no, default) or 1.
-DEVICE_VBMETA_IS_SAMSUNG = 1
+DEVICE_VBMETA_IS_SAMSUNG = 0
 
 ########################################################################
 # Automatic flashing on package upgrades
